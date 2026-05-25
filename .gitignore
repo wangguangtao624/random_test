@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# 临时文件
+*.tmp
+*.log
+_output.txt
+_temp_test.py
+_test_runner.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 测试数据（太大不上传）
+random_test_suite/data/*.bin
+random_test_suite/data/*.txt
+
+# 报告（可选，不上传）
+random_test_suite/reports/*.png
+random_test_suite/reports/*.html
+random_test_suite/reports/*.json
+
+# openspec
+.claude/
+openspec/
