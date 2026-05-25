@@ -260,11 +260,17 @@ class NISTTestSuite:
                 other += 1
 
         # 计算期望概率
+        # p1 = P(rank = Q) = product_{i=0}^{Q-1} (1 - 2^{i-Q})
         p1 = 1.0
         for i in range(Q):
             p1 *= (1 - 2**(i-Q))
 
-        p2 = p1 * (1 - 2**(-Q)) * (1 - 2**(-Q+1))
+        # p2 = P(rank = Q-1) = product_{i=0}^{Q-2} (1-2^{i-Q})^2 / product_{i=0}^{Q-2} (1-2^{i-Q+1})
+        log_p2 = 0
+        for i in range(Q - 1):
+            log_p2 += 2 * math.log2(1 - 2**(i-Q)) - math.log2(1 - 2**(i-Q+1))
+        p2 = 2**log_p2
+
         p3 = 1 - p1 - p2
 
         # 计算卡方统计量
@@ -280,13 +286,14 @@ class NISTTestSuite:
     def _gf2_rank(self, matrix: np.ndarray) -> int:
         """计算GF(2)上的矩阵秩"""
         m, n = matrix.shape
+        mat = matrix.copy()
         rank = 0
 
         for col in range(n):
             # 找到主元
             pivot = None
             for row in range(rank, m):
-                if matrix[row, col] == 1:
+                if mat[row, col] == 1:
                     pivot = row
                     break
 
@@ -294,12 +301,13 @@ class NISTTestSuite:
                 continue
 
             # 交换行
-            matrix[[rank, pivot]] = matrix[[pivot, rank]]
+            if pivot != rank:
+                mat[rank], mat[pivot] = mat[pivot].copy(), mat[rank].copy()
 
-            # 消元
+            # 消元（GF(2)上用XOR）
             for row in range(m):
-                if row != rank and matrix[row, col] == 1:
-                    matrix[row] = (matrix[row] + matrix[rank]) % 2
+                if row != rank and mat[row, col] == 1:
+                    mat[row] ^= mat[rank]
 
             rank += 1
 
@@ -324,7 +332,7 @@ class NISTTestSuite:
         # 计算阈值
         T = math.sqrt(math.log(1/0.05) * n)
 
-        # 统计超过阈值的峰值数量
+        # 统计低于阈值的峰值数量
         N0 = 0.95 * n / 2
         N1 = np.sum(magnitudes < T)
 
@@ -357,9 +365,8 @@ class NISTTestSuite:
                 i += 1
 
         # 计算期望值和方差
-        N = n // m
-        mu = (N - m + 1) / 2**m
-        sigma2 = N * (1/2**m - (2*m-1)/2**(2*m))
+        mu = (n - m + 1) / 2**m
+        sigma2 = n * (1/2**m - (2*m-1)/2**(2*m))
 
         if sigma2 <= 0:
             return 0.0
@@ -430,18 +437,19 @@ class NISTTestSuite:
             if block in table:
                 sum_val += math.log2(i + 1 - table[block])
             else:
-                sum_val += math.log2(i + 1)
+                sum_val += math.log2(i + 1 - Q)
             table[block] = i + 1
 
         # 计算统计量
         fn = sum_val / K
 
-        # 期望值和方差（预计算的表）
-        expected = [0, 0, 0, 0, 0, 0, 0, 5.2177052, 6.1962507, 7.1836656,
+        # 期望值和方差（预计算的表，索引对应L值）
+        # NIST标准: L=6→5.2177052, L=7→6.1962507, L=8→7.1836656, ...
+        expected = [0, 0, 0, 0, 0, 0, 5.2177052, 6.1962507, 7.1836656,
                     8.1764248, 9.1723243, 10.170032, 11.168765, 12.168070,
-                    13.167693, 14.167488, 15.167379]
-        variance = [0, 0, 0, 0, 0, 0, 0, 2.954, 3.125, 3.238,
-                   3.311, 3.356, 3.384, 3.401, 3.410, 3.416, 3.419, 3.421]
+                    13.167693, 14.167488, 15.167379, 16.167212]
+        variance = [0, 0, 0, 0, 0, 0, 2.954, 3.125, 3.238,
+                   3.311, 3.356, 3.384, 3.401, 3.410, 3.416, 3.419, 3.421, 3.423]
 
         if L < 6 or L > 16:
             return 0.0
@@ -531,7 +539,7 @@ class NISTTestSuite:
 
         return L
 
-    def serial_test(self, bits: np.ndarray, m: int = 16) -> Tuple[float, float, float]:
+    def serial_test(self, bits: np.ndarray, m: int = 10) -> Tuple[float, float, float]:
         """
         测试11: 序列测试
         检测所有可能的m位模式的出现频率是否均匀
@@ -579,7 +587,7 @@ class NISTTestSuite:
 
         return p1, p2, p3
 
-    def approximate_entropy_test(self, bits: np.ndarray, m: int = 10) -> float:
+    def approximate_entropy_test(self, bits: np.ndarray, m: int = 8) -> float:
         """
         测试12: 近似熵测试
         检测序列的熵值是否符合随机预期
@@ -661,13 +669,25 @@ class NISTTestSuite:
 
         return p_forward, p_backward
 
-    def random_excursions_test(self, bits: np.ndarray) -> Dict[int, float]:
+    def _get_pi_value(self, k: int, x: int) -> float:
+        """NIST SP 800-22 Random Excursions Test pi_x(k) formula.
+        Returns the expected probability of exactly k visits to state x in a cycle."""
+        abs_x = abs(x)
+        p = 1.0 / (2 * abs_x)  # hitting probability
+        if k == 0:
+            return 1.0 - p
+        elif k >= 5:
+            return p * (1.0 - p) ** 4
+        else:
+            return (p ** 2) * (1.0 - p) ** (k - 1)
+
+    def random_excursions_test(self, bits: np.ndarray) -> float:
         """
         测试14: 随机游程测试
-        检测循环随机游程中各状态的访问次数
+        检测循环随机游程中各状态的访问次数分布
 
         Returns:
-            Dict: 状态 -> P-value
+            float: 最小P-value
         """
         n = len(bits)
 
@@ -687,70 +707,90 @@ class NISTTestSuite:
                     cycles.append(cumulative[cycle_start:i+1])
                 cycle_start = i
 
-        # 如果没有完整的循环
-        if len(cycles) < 1:
+        J = len(cycles)
+
+        # NIST要求至少10个循环
+        if J < 10:
             return {state: 1.0 for state in range(-4, 5) if state != 0}
 
-        # 统计各状态的访问次数
         states = [-4, -3, -2, -1, 1, 2, 3, 4]
-        visit_counts = {state: 0 for state in states}
-
-        for cycle in cycles:
-            for state in states:
-                visit_counts[state] += np.sum(cycle == state)
-
-        # 计算期望值
-        pi = {
-            -4: 0.0278, -3: 0.0625, -2: 0.1250, -1: 0.2500,
-            1: 0.2500, 2: 0.1250, 3: 0.0625, 4: 0.0278
-        }
-
-        # 计算卡方统计量
-        J = len(cycles)
         p_values = {}
 
         for state in states:
-            expected = J * pi[state]
-            if expected > 0:
-                chi_squared = (visit_counts[state] - expected)**2 / expected
-                p_values[state] = 1 - stats.chi2.cdf(chi_squared, 1)
-            else:
-                p_values[state] = 1.0
+            # 统计每个循环对该状态的访问次数
+            visit_counts_per_cycle = []
+            for cycle in cycles:
+                count = int(np.sum(cycle == state))
+                visit_counts_per_cycle.append(count)
 
-        # 返回最小的P-value
+            # 按访问次数分桶: 0, 1, 2, 3, 4, 5+
+            observed = [0] * 6
+            for vc in visit_counts_per_cycle:
+                bin_idx = min(vc, 5)
+                observed[bin_idx] += 1
+
+            # 计算期望概率
+            expected = [J * self._get_pi_value(k, state) for k in range(6)]
+
+            # 计算卡方统计量 (6个桶, 5个自由度)
+            chi_sq = 0.0
+            for i in range(6):
+                if expected[i] > 0:
+                    chi_sq += (observed[i] - expected[i]) ** 2 / expected[i]
+
+            # P-value = igamc(5/2, chi_sq/2)
+            p_values[state] = float(stats.gamma.sf(chi_sq / 2.0, 2.5))
+
         return min(p_values.values())
 
-    def random_excursions_variant_test(self, bits: np.ndarray) -> Dict[int, float]:
+    def random_excursions_variant_test(self, bits: np.ndarray) -> float:
         """
         测试15: 随机游程变体测试
-        检测随机游程中特定状态的访问次数
+        检测随机游程中各状态被访问的循环数
 
         Returns:
-            Dict: 状态 -> P-value
+            float: 最小P-value
         """
         n = len(bits)
 
         # 将0映射为-1，1映射为+1
         X = 2 * bits - 1
 
-        # 计算累积和
+        # 计算累积和（添加0作为起点）
         cumulative = np.concatenate([[0], np.cumsum(X)])
 
-        # 统计各状态的访问次数
+        # 找到循环（返回0的时刻）
+        cycles = []
+        cycle_start = 0
+
+        for i in range(1, len(cumulative)):
+            if cumulative[i] == 0:
+                if i > cycle_start + 1:
+                    cycles.append(cumulative[cycle_start:i+1])
+                cycle_start = i
+
+        J = len(cycles)
+
+        # NIST要求至少10个循环
+        if J < 10:
+            return {state: 1.0 for state in range(-9, 10) if state != 0}
+
         states = list(range(-9, 10))
         states.remove(0)
 
-        visit_counts = {}
+        # 统计访问各状态的循环数
+        cycle_visit_counts = {}
         for state in states:
-            visit_counts[state] = np.sum(cumulative == state)
+            cycle_visit_counts[state] = sum(1 for c in cycles if np.any(c == state))
 
-        # 计算P-value
+        # 计算P-value（正态近似）
         p_values = {}
         for state in states:
-            # 使用正态近似
-            expected = 2 * (abs(state) + 1)  # 简化的期望值
-            z = (visit_counts[state] - expected) / math.sqrt(expected)
-            p_values[state] = 2 * (1 - stats.norm.cdf(abs(z)))
+            expected = J / (2.0 * abs(state))  # 期望循环数
+            if expected > 0:
+                z = (cycle_visit_counts[state] - expected) / math.sqrt(expected)
+                p_values[state] = 2 * (1 - stats.norm.cdf(abs(z)))
+            else:
+                p_values[state] = 1.0
 
-        # 返回最小的P-value
         return min(p_values.values())
