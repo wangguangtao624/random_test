@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+uploads/
+web_reports/
+test_reports/
+test_reports_fixed/
+verification_reports/
+verification_reports_10/
+reports/
+*.egg-info/
+dist/
+build/
+.env

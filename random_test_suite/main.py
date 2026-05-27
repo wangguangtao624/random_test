@@ -14,7 +14,7 @@ from typing import Dict, List, Any
 # 添加当前目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core.nist_tests import NISTTestSuite
+from core.nist_tests_ng import NISTTestSuiteNistrng as NISTTestSuite
 from core.gbt_tests import GBTTestSuite
 from core.statistics import calculate_pass_rate, generate_summary_statistics
 from utils.data_loader import DataLoader

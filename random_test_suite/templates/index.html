@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CIS芯片TRNG随机性测试平台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/dracula.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldgutter.min.css" rel="stylesheet">
+    <style>
+        :root { --primary: #0d6efd; --success: #198754; --danger: #dc3545; }
+        body { background: #f0f2f5; font-family: 'Microsoft YaHei', sans-serif; }
+        .navbar-brand { font-weight: bold; }
+        .nav-pills .nav-link { border-radius: 8px; margin: 2px 0; font-size: 0.95rem; }
+        .nav-pills .nav-link.active { background: var(--bs-primary); }
+        .card { border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-radius: 12px; }
+        .card-header { border-radius: 12px 12px 0 0 !important; font-weight: 600; }
+        .upload-zone {
+            border: 3px dashed #dee2e6; border-radius: 16px; padding: 60px 20px;
+            text-align: center; transition: all 0.3s; cursor: pointer; background: #fafbfc;
+        }
+        .upload-zone:hover, .upload-zone.dragover { border-color: var(--bs-primary); background: #f0f7ff; }
+        .upload-zone i { font-size: 3rem; color: #adb5bd; }
+        .stat-card { text-align: center; padding: 20px; }
+        .stat-card .value { font-size: 2rem; font-weight: bold; }
+        .stat-card .label { color: #6c757d; font-size: 0.9rem; }
+        .source-tree { max-height: 600px; overflow-y: auto; }
+        .source-tree .list-group-item { border: none; padding: 6px 12px; font-size: 0.85rem; cursor: pointer; }
+        .source-tree .list-group-item:hover { background: #e9ecef; }
+        .source-tree .list-group-item.active { background: var(--bs-primary); color: white; }
+        .CodeMirror { height: 600px; border-radius: 0 0 8px 8px; font-size: 13px; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .tab-content > .tab-pane { display: none; }
+        .tab-content > .tab-pane.active { display: block; }
+        .flow-box {
+            display: inline-block; padding: 8px 16px; border-radius: 8px; margin: 4px;
+            font-size: 0.85rem; font-weight: 500; white-space: nowrap;
+        }
+        .flow-arrow { display: inline-block; margin: 0 2px; color: #1565c0; font-size: 1.2rem; vertical-align: middle; }
+        .formula-box {
+            background: #f8f9fa; border-left: 4px solid var(--bs-primary);
+            padding: 12px 16px; border-radius: 0 8px 8px 0; font-family: 'Cambria Math', 'Times New Roman', serif;
+            font-size: 1.05rem; margin: 8px 0; overflow-x: auto;
+        }
+        .test-check-item { padding: 6px 10px; border-radius: 6px; transition: background 0.2s; }
+        .test-check-item:hover { background: #f0f7ff; }
+        .principle-section { margin-bottom: 24px; }
+        .principle-section h5 { color: var(--bs-primary); border-bottom: 2px solid var(--bs-primary); padding-bottom: 6px; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#"><i class="bi bi-cpu"></i> CIS芯片TRNG随机性测试平台</a>
+            <span class="navbar-text text-white-50">NIST SP 800-22 & GB/T 32915-2016</span>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <!-- Left sidebar -->
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <ul class="nav nav-pills flex-column" id="mainNav">
+                            <li class="nav-item"><a class="nav-link active" href="#" data-tab="upload"><i class="bi bi-cloud-upload"></i> 数据上传</a></li>
+                            <li class="nav-item"><a class="nav-link" href="#" data-tab="test"><i class="bi bi-play-circle"></i> 执行测试</a></li>
+                            <li class="nav-item"><a class="nav-link" href="#" data-tab="results"><i class="bi bi-bar-chart"></i> 测试结果</a></li>
+                            <li class="nav-item"><a class="nav-link" href="#" data-tab="history"><i class="bi bi-clock-history"></i> 历史记录</a></li>
+                            <li class="nav-item"><a class="nav-link" href="#" data-tab="principles"><i class="bi bi-book"></i> 测试原理</a></li>
+                            <li class="nav-item"><a class="nav-link" href="#" data-tab="source"><i class="bi bi-code-slash"></i> 源码预览</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main content -->
+            <div class="col-md-10">
+                <!-- Tab: Upload -->
+                <div class="tab-pane active" id="tab-upload">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white"><i class="bi bi-cloud-upload"></i> 数据文件上传</div>
+                        <div class="card-body">
+                            <div class="upload-zone" id="uploadZone">
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <h5 class="mt-3">拖拽文件到此处或点击选择</h5>
+                                <p class="text-muted">支持 .bin / .txt / .dat / .raw 格式</p>
+                                <input type="file" id="fileInput" accept=".bin,.txt,.dat,.raw" style="display:none">
+                            </div>
+                            <div id="uploadResult" class="mt-3" style="display:none">
+                                <div class="alert alert-info"><i class="bi bi-file-earmark-check"></i> <span id="uploadInfo"></span></div>
+                                <div id="fileDetails"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Test -->
+                <div class="tab-pane" id="tab-test">
+                    <div class="card mb-3">
+                        <div class="card-header bg-success text-white"><i class="bi bi-gear"></i> 测试配置</div>
+                        <div class="card-body">
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">显著性水平 (α)</label>
+                                    <input type="number" class="form-control" id="alphaInput" value="0.01" step="0.001" min="0.001" max="0.1">
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label">当前文件</label>
+                                    <input type="text" class="form-control" id="currentFile" readonly value="请先上传文件">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-check2-square"></i> 选择测试项目</span>
+                            <div>
+                                <button class="btn btn-sm btn-light" onclick="selectAllTests(true)">全选</button>
+                                <button class="btn btn-sm btn-light" onclick="selectAllTests(false)">全不选</button>
+                                <button class="btn btn-sm btn-light" onclick="selectNistOnly()">仅NIST</button>
+                                <button class="btn btn-sm btn-light" onclick="selectGbtOnly()">仅GB/T</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-7">
+                                    <h6 class="text-primary">NIST SP 800-22 (15项)</h6>
+                                    <div id="nistChecks" class="mb-3"></div>
+                                    <h6 class="text-info">GB/T 32915-2016 (4项)</h6>
+                                    <div id="gbtChecks"></div>
+                                </div>
+                                <div class="col-md-5">
+                                    <div class="card bg-light">
+                                        <div class="card-body">
+                                            <h6>已选测试项: <span id="selectedCount" class="badge bg-primary">0</span></h6>
+                                            <div id="selectedList" class="small text-muted" style="max-height:300px;overflow-y:auto"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-success btn-lg" id="btnStartTest" disabled>
+                        <i class="bi bi-play-fill"></i> 开始测试
+                    </button>
+
+                    <div id="testProgress" class="mt-4" style="display:none">
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white"><i class="bi bi-hourglass-split"></i> 测试进度</div>
+                            <div class="card-body">
+                                <div class="progress mb-3" style="height: 30px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:0%">0%</div>
+                                </div>
+                                <div id="progressMessage" class="text-muted">等待开始...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Results -->
+                <div class="tab-pane" id="tab-results">
+                    <div class="card">
+                        <div class="card-header bg-info text-white"><i class="bi bi-bar-chart"></i> 测试结果</div>
+                        <div class="card-body">
+                            <div id="noResult" class="text-center text-muted py-5">
+                                <i class="bi bi-inbox" style="font-size:3rem"></i>
+                                <p class="mt-2">暂无测试结果，请先执行测试</p>
+                            </div>
+                            <div id="resultContent" style="display:none">
+                                <div class="row mb-4" id="statCards"></div>
+                                <div class="row mb-4">
+                                    <div class="col-md-8">
+                                        <div class="card"><div class="card-header">测试通过率</div><div class="card-body"><div id="result-chart" style="height:400px"></div></div></div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card"><div class="card-header">总体通过率</div><div class="card-body"><div id="pie-chart" style="height:300px"></div></div></div>
+                                    </div>
+                                </div>
+                                <div class="card mb-3">
+                                    <div class="card-header">详细结果</div>
+                                    <div class="card-body" id="resultTable"></div>
+                                </div>
+                                <div id="reportButtons"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: History -->
+                <div class="tab-pane" id="tab-history">
+                    <div class="card">
+                        <div class="card-header bg-secondary text-white"><i class="bi bi-clock-history"></i> 测试历史</div>
+                        <div class="card-body" id="historyList"><p class="text-muted text-center py-3">暂无历史记录</p></div>
+                    </div>
+                </div>
+
+                <!-- Tab: Principles -->
+                <div class="tab-pane" id="tab-principles">
+                    <div class="card">
+                        <div class="card-header bg-warning text-dark"><i class="bi bi-book"></i> 测试原理说明</div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <div class="list-group" id="principleNav" style="max-height:700px;overflow-y:auto"></div>
+                                </div>
+                                <div class="col-md-9">
+                                    <div id="principleContent">
+                                        <p class="text-muted text-center py-5">← 请选择测试项查看详细原理</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Source -->
+                <div class="tab-pane" id="tab-source">
+                    <div class="card">
+                        <div class="card-header bg-dark text-white"><i class="bi bi-code-slash"></i> 源码预览</div>
+                        <div class="card-body p-0">
+                            <div class="row g-0">
+                                <div class="col-md-3 source-tree border-end" id="sourceTree">
+                                    <div class="p-2 text-muted small">加载中...</div>
+                                </div>
+                                <div class="col-md-9">
+                                    <div id="sourceHeader" class="p-2 bg-light border-bottom small text-muted">选择文件查看源码</div>
+                                    <div id="sourceEditor"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/shell/shell.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/properties/properties.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldgutter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/indent-fold.min.js"></script>
+    <script>
+    const state = { uploadedFile: null, uploadedInfo: null, currentTaskId: null, testInfo: null, sourceFiles: [], editor: null, charts: {} };
+
+    // ========== Navigation ==========
+    document.querySelectorAll('#mainNav .nav-link').forEach(link => {
+        link.addEventListener('click', e => {
+            e.preventDefault();
+            const tab = link.dataset.tab;
+            document.querySelectorAll('#mainNav .nav-link').forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            if (tab === 'source' && state.editor) setTimeout(() => state.editor.refresh(), 100);
+            if (tab === 'results' && state.charts.bar) setTimeout(() => { state.charts.bar.resize(); state.charts.pie?.resize(); }, 100);
+        });
+    });
+
+    // ========== Upload ==========
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('dragover'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+    fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+    function handleFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        uploadZone.innerHTML = '<div class="spinner-border text-primary"></div><p class="mt-2">上传中...</p>';
+        fetch('/api/upload', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { uploadZone.innerHTML = `<i class="bi bi-x-circle text-danger"></i><h5 class="mt-3">上传失败</h5><p class="text-danger">${data.error}</p>`; return; }
+                state.uploadedFile = data.filepath;
+                state.uploadedInfo = data;
+                document.getElementById('currentFile').value = data.filename;
+                document.getElementById('btnStartTest').disabled = false;
+                uploadZone.innerHTML = `<i class="bi bi-check-circle text-success"></i><h5 class="mt-3">${data.filename}</h5>`;
+                document.getElementById('uploadResult').style.display = 'block';
+                document.getElementById('uploadInfo').textContent = `文件上传成功 (${data.info.length.toLocaleString()} 比特)`;
+                const vc = data.valid ? 'success' : 'warning';
+                document.getElementById('fileDetails').innerHTML = `<div class="row"><div class="col-md-3"><strong>序列长度:</strong> ${data.info.length.toLocaleString()} 比特</div><div class="col-md-3"><strong>1的比例:</strong> ${(data.info.ones_ratio * 100).toFixed(2)}%</div><div class="col-md-3"><strong>0的个数:</strong> ${data.info.zeros_count.toLocaleString()}</div><div class="col-md-3"><strong>1的个数:</strong> ${data.info.ones_count.toLocaleString()}</div></div><div class="mt-2"><span class="badge bg-${vc}">${data.message}</span></div>`;
+            })
+            .catch(err => { uploadZone.innerHTML = `<i class="bi bi-x-circle text-danger"></i><h5 class="mt-3">上传失败</h5>`; });
+    }
+
+    // ========== Test Selection ==========
+    function loadTestInfo() {
+        fetch('/api/tests/info').then(r => r.json()).then(data => {
+            state.testInfo = data;
+            renderTestChecks(data);
+            renderPrincipleNav(data);
+        });
+    }
+
+    function renderTestChecks(data) {
+        const nistDiv = document.getElementById('nistChecks');
+        const gbtDiv = document.getElementById('gbtChecks');
+        nistDiv.innerHTML = data.nist.map(t => `<div class="test-check-item"><div class="form-check"><input class="form-check-input test-checkbox" type="checkbox" id="chk_${t.id}" value="${t.id}" data-standard="nist" checked><label class="form-check-label" for="chk_${t.id}">${t.name}</label></div></div>`).join('');
+        gbtDiv.innerHTML = data.gbt.map(t => `<div class="test-check-item"><div class="form-check"><input class="form-check-input test-checkbox" type="checkbox" id="chk_${t.id}" value="${t.id}" data-standard="gbt" checked><label class="form-check-label" for="chk_${t.id}">${t.name}</label></div></div>`).join('');
+        document.querySelectorAll('.test-checkbox').forEach(cb => cb.addEventListener('change', updateSelectedCount));
+        updateSelectedCount();
+    }
+
+    function getSelectedTests() {
+        return [...document.querySelectorAll('.test-checkbox:checked')].map(cb => cb.value);
+    }
+
+    function updateSelectedCount() {
+        const selected = getSelectedTests();
+        document.getElementById('selectedCount').textContent = selected.length;
+        document.getElementById('selectedList').innerHTML = selected.map(id => {
+            const all = [...(state.testInfo?.nist || []), ...(state.testInfo?.gbt || [])];
+            const t = all.find(x => x.id === id);
+            return `<div class="mb-1"><span class="badge bg-${t?.standard?.includes('NIST') ? 'primary' : 'info'} me-1">${t?.standard?.includes('NIST') ? 'NIST' : 'GB/T'}</span>${t?.name || id}</div>`;
+        }).join('');
+    }
+
+    function selectAllTests(v) { document.querySelectorAll('.test-checkbox').forEach(cb => cb.checked = v); updateSelectedCount(); }
+    function selectNistOnly() { document.querySelectorAll('.test-checkbox').forEach(cb => cb.checked = cb.dataset.standard === 'nist'); updateSelectedCount(); }
+    function selectGbtOnly() { document.querySelectorAll('.test-checkbox').forEach(cb => cb.checked = cb.dataset.standard === 'gbt'); updateSelectedCount(); }
+
+    // ========== Test Execution ==========
+    document.getElementById('btnStartTest').addEventListener('click', startTest);
+
+    function startTest() {
+        if (!state.uploadedFile) return;
+        const alpha = parseFloat(document.getElementById('alphaInput').value);
+        const selected = getSelectedTests();
+        if (!selected.length) { alert('请至少选择一个测试项'); return; }
+
+        document.getElementById('btnStartTest').disabled = true;
+        document.getElementById('testProgress').style.display = 'block';
+        const bar = document.getElementById('progressBar');
+        bar.style.width = '0%'; bar.textContent = '0%';
+        bar.classList.remove('bg-success', 'bg-danger');
+        bar.classList.add('progress-bar-animated');
+
+        fetch('/api/test/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath: state.uploadedFile, alpha, selected_tests: selected })
+        }).then(r => r.json()).then(data => {
+            state.currentTaskId = data.task_id;
+            pollStatus();
+        });
+    }
+
+    function pollStatus() {
+        if (!state.currentTaskId) return;
+        fetch(`/api/test/status/${state.currentTaskId}`).then(r => r.json()).then(data => {
+            const bar = document.getElementById('progressBar');
+            bar.style.width = data.progress + '%'; bar.textContent = data.progress + '%';
+            document.getElementById('progressMessage').textContent = data.message;
+            if (data.status === 'completed') {
+                bar.classList.remove('progress-bar-animated'); bar.classList.add('bg-success');
+                loadResult();
+            } else if (data.status === 'error') {
+                bar.classList.remove('progress-bar-animated'); bar.classList.add('bg-danger');
+                document.getElementById('btnStartTest').disabled = false;
+            } else {
+                setTimeout(pollStatus, 1000);
+            }
+        });
+    }
+
+    function loadResult() {
+        fetch(`/api/test/result/${state.currentTaskId}`).then(r => r.json()).then(data => {
+            if (data.error) return;
+            renderResult(data.result, data.report_files);
+            document.getElementById('btnStartTest').disabled = false;
+            document.querySelector('[data-tab="results"]').click();
+        });
+    }
+
+    // ========== Results ==========
+    function renderResult(result, reportFiles) {
+        document.getElementById('noResult').style.display = 'none';
+        document.getElementById('resultContent').style.display = 'block';
+        const overall = (result.overall_pass_rate * 100).toFixed(2);
+        const nist = (result.nist_pass_rate * 100).toFixed(2);
+        const gbt = (result.gbt_pass_rate * 100).toFixed(2);
+        const sc = result.overall_pass_rate >= 0.98 ? 'success' : 'danger';
+        document.getElementById('statCards').innerHTML = `
+            <div class="col-md-3"><div class="card stat-card"><div class="value text-${sc}">${overall}%</div><div class="label">总体通过率</div></div></div>
+            <div class="col-md-3"><div class="card stat-card"><div class="value text-primary">${nist}%</div><div class="label">NIST通过率</div></div></div>
+            <div class="col-md-3"><div class="card stat-card"><div class="value text-info">${gbt}%</div><div class="label">GB/T通过率</div></div></div>
+            <div class="col-md-3"><div class="card stat-card"><div class="value">${(result.total_bits || 0).toLocaleString()}</div><div class="label">测试比特数</div></div></div>`;
+        renderBarChart(result); renderPieChart(result); renderResultTable(result);
+        if (reportFiles) {
+            document.getElementById('reportButtons').innerHTML = `
+                <a href="/api/report/${state.currentTaskId}/${reportFiles.html}" class="btn btn-primary" target="_blank"><i class="bi bi-filetype-html"></i> 查看HTML报告</a>
+                <a href="/api/report/${state.currentTaskId}/${reportFiles.text}" class="btn btn-outline-secondary"><i class="bi bi-filetype-txt"></i> 下载文本报告</a>
+                <a href="/api/report/${state.currentTaskId}/${reportFiles.json}" class="btn btn-outline-secondary"><i class="bi bi-filetype-json"></i> 下载JSON数据</a>`;
+        }
+    }
+
+    function renderBarChart(result) {
+        const dom = document.getElementById('result-chart');
+        if (state.charts.bar) state.charts.bar.dispose();
+        const chart = echarts.init(dom); state.charts.bar = chart;
+        const nistNames = Object.keys(result.nist_results || {});
+        const gbtNames = Object.keys(result.gbt_results || {});
+        const allNames = [...nistNames, ...gbtNames];
+        const allValues = [...nistNames.map(n => (result.nist_results[n] * 100).toFixed(2)), ...gbtNames.map(n => (result.gbt_results[n] * 100).toFixed(2))];
+        const colors = allValues.map(v => v >= 98 ? '#198754' : '#dc3545');
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            grid: { left: 200, right: 40, top: 20, bottom: 30 },
+            xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
+            yAxis: { type: 'category', data: allNames.reverse(), axisLabel: { fontSize: 11 } },
+            series: [{ type: 'bar', data: allValues.reverse().map((v, i) => ({ value: v, itemStyle: { color: colors[allValues.length - 1 - i] } })), label: { show: true, position: 'right', formatter: '{c}%', fontSize: 11 }, markLine: { data: [{ xAxis: 98, lineStyle: { color: '#dc3545', type: 'dashed' }, label: { formatter: '98%' } }] } }]
+        });
+        window.addEventListener('resize', () => chart.resize());
+    }
+
+    function renderPieChart(result) {
+        const dom = document.getElementById('pie-chart');
+        if (state.charts.pie) state.charts.pie.dispose();
+        const chart = echarts.init(dom); state.charts.pie = chart;
+        const rate = result.overall_pass_rate * 100;
+        chart.setOption({ series: [{ type: 'pie', radius: ['50%', '75%'], data: [{ value: rate, name: '通过', itemStyle: { color: '#198754' } }, { value: 100 - rate, name: '未通过', itemStyle: { color: rate >= 98 ? '#e9ecef' : '#dc3545' } }], label: { formatter: '{b}: {d}%' } }] });
+        window.addEventListener('resize', () => chart.resize());
+    }
+
+    function renderResultTable(result) {
+        let html = `<table class="table table-hover"><thead><tr><th>测试项</th><th>通过率</th><th>状态</th></tr></thead><tbody>`;
+        const addRows = (results, std) => {
+            for (const [name, rate] of Object.entries(results)) {
+                const pct = (rate * 100).toFixed(2); const pass = rate >= 0.98;
+                html += `<tr><td><span class="badge bg-${std === 'NIST' ? 'primary' : 'info'} me-1">${std}</span>${name}</td><td>${pct}%</td><td><span class="badge ${pass ? 'bg-success' : 'bg-danger'}">${pass ? 'PASS' : 'FAIL'}</span></td></tr>`;
+            }
+        };
+        addRows(result.nist_results || {}, 'NIST'); addRows(result.gbt_results || {}, 'GBT');
+        html += '</tbody></table>';
+        document.getElementById('resultTable').innerHTML = html;
+    }
+
+    // ========== History ==========
+    function loadHistory() {
+        fetch('/api/history').then(r => r.json()).then(data => {
+            if (!data.length) { document.getElementById('historyList').innerHTML = '<p class="text-muted text-center py-3">暂无历史记录</p>'; return; }
+            let html = '<table class="table table-hover"><thead><tr><th>时间</th><th>文件</th><th>总体通过率</th><th>NIST</th><th>GB/T</th><th>比特数</th><th>状态</th></tr></thead><tbody>';
+            data.forEach(h => {
+                const sb = h.status === 'pass' ? '<span class="badge bg-success">通过</span>' : '<span class="badge bg-danger">未通过</span>';
+                html += `<tr><td>${new Date(h.completed_at).toLocaleString()}</td><td>${h.file}</td><td>${(h.overall_pass_rate * 100).toFixed(2)}%</td><td>${(h.nist_pass_rate * 100).toFixed(2)}%</td><td>${(h.gbt_pass_rate * 100).toFixed(2)}%</td><td>${h.total_bits.toLocaleString()}</td><td>${sb}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            document.getElementById('historyList').innerHTML = html;
+        });
+    }
+    document.querySelector('[data-tab="history"]').addEventListener('click', loadHistory);
+
+    // ========== Principles ==========
+    function renderPrincipleNav(data) {
+        const nav = document.getElementById('principleNav');
+        let html = '';
+        html += '<div class="list-group-item active bg-primary text-white fw-bold small">NIST SP 800-22</div>';
+        data.nist.forEach(t => { html += `<a href="#" class="list-group-item list-group-item-action small" data-test-id="${t.id}" onclick="showPrinciple('${t.id}', event)">${t.name.split('(')[0].trim()}</a>`; });
+        html += '<div class="list-group-item active bg-info text-white fw-bold small mt-2">GB/T 32915-2016</div>';
+        data.gbt.forEach(t => { html += `<a href="#" class="list-group-item list-group-item-action small" data-test-id="${t.id}" onclick="showPrinciple('${t.id}', event)">${t.name.split('(')[0].trim()}</a>`; });
+        nav.innerHTML = html;
+    }
+
+    function showPrinciple(testId, event) {
+        if (event) event.preventDefault();
+        document.querySelectorAll('#principleNav .list-group-item').forEach(el => el.classList.remove('active'));
+        const clicked = document.querySelector(`#principleNav [data-test-id="${testId}"]`);
+        if (clicked) { clicked.classList.add('active'); clicked.classList.add('bg-light'); }
+
+        const all = [...(state.testInfo?.nist || []), ...(state.testInfo?.gbt || [])];
+        const t = all.find(x => x.id === testId);
+        if (!t) return;
+
+        const stdBadge = t.standard.includes('NIST') ? 'bg-primary' : 'bg-info';
+        const stdShort = t.standard.includes('NIST') ? 'NIST' : 'GB/T';
+
+        // Build code flow
+        const codeFlowHtml = (t.code_flow || []).map((step, i) => {
+            const isFirst = i === 0, isLast = i === t.code_flow.length - 1;
+            const bg = isFirst ? '#c8e6c9' : isLast ? '#bbdefb' : '#e3f2fd';
+            const border = isFirst ? '#2e7d32' : isLast ? '#1565c0' : '#90caf9';
+            const arrow = isLast ? '' : '<span class="flow-arrow">→</span>';
+            return `<span class="flow-box" style="background:${bg};border:2px solid ${border}">${step}</span>${arrow}`;
+        }).join('');
+
+        // Build test flow
+        const testFlowHtml = (t.test_flow || []).map((step, i) => {
+            const isFirst = i === 0, isLast = i === t.test_flow.length - 1;
+            const bg = isFirst ? '#fff3e0' : isLast ? '#e8f5e9' : '#fce4ec';
+            const border = isFirst ? '#e65100' : isLast ? '#2e7d32' : '#c62828';
+            const arrow = isLast ? '' : '<span class="flow-arrow">→</span>';
+            return `<span class="flow-box" style="background:${bg};border:2px solid ${border}">${step}</span>${arrow}`;
+        }).join('');
+
+        document.getElementById('principleContent').innerHTML = `
+            <div class="fade-in">
+                <h4>${t.name} <span class="badge ${stdBadge}">${stdShort}</span></h4>
+                <p class="text-muted mt-1">${t.purpose}</p>
+
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header"><i class="bi bi-info-circle"></i> 检测目标</div>
+                            <div class="card-body">
+                                <p>${t.desc}</p>
+                                <p><strong>生活类比:</strong> <em>${t.analogy}</em></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header"><i class="bi bi-check-circle"></i> 通过标准</div>
+                            <div class="card-body">
+                                <p><strong>P-value ≥ 0.01:</strong> 测试通过，序列表现出随机性</p>
+                                <p><strong>P-value < 0.01:</strong> 测试失败，可能存在非随机特征</p>
+                                <p><strong>总体通过率 ≥ 98%:</strong> 大量测试组中至少98%通过</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="principle-section">
+                    <h5><i class="bi bi-calculator"></i> 计算公式</h5>
+                    <div class="formula-box"><strong>${t.formula || ''}</strong></div>
+                    <p class="text-muted small mt-2">${t.formula_detail || ''}</p>
+                </div>
+
+                <div class="principle-section">
+                    <h5><i class="bi bi-code-square"></i> 代码实现流程</h5>
+                    <div class="p-3 bg-light rounded" style="overflow-x:auto; white-space:nowrap">${codeFlowHtml}</div>
+                </div>
+
+                <div class="principle-section">
+                    <h5><i class="bi bi-diagram-3"></i> 测试执行流程</h5>
+                    <div class="p-3 bg-light rounded" style="overflow-x:auto; white-space:nowrap">${testFlowHtml}</div>
+                </div>
+            </div>`;
+    }
+
+    // ========== Source Preview ==========
+    function loadSourceFiles() {
+        fetch('/api/source/files').then(r => r.json()).then(data => { state.sourceFiles = data; renderSourceTree(data); });
+    }
+
+    function renderSourceTree(files) {
+        const tree = document.getElementById('sourceTree');
+        const groups = {};
+        files.forEach(f => {
+            const p = f.path.replace(/\\/g, '/');
+            const dir = p.includes('/') ? p.substring(0, p.lastIndexOf('/')) : '';
+            if (!groups[dir]) groups[dir] = [];
+            groups[dir].push(f);
+        });
+        const icons = { '.py': 'bi-filetype-py text-primary', '.txt': 'bi-filetype-txt text-secondary', '.md': 'bi-file-earmark-text text-info', '.json': 'bi-filetype-json text-warning', '.ini': 'bi-gear text-muted', '.bat': 'bi-terminal text-success' };
+        let html = '<div class="list-group list-group-flush">';
+        for (const [dir, dirFiles] of Object.entries(groups)) {
+            if (dir) html += `<div class="list-group-item bg-light fw-bold small"><i class="bi bi-folder"></i> ${dir}</div>`;
+            dirFiles.forEach(f => {
+                const icon = icons[f.type] || 'bi-file text-muted';
+                html += `<div class="list-group-item ${dir ? 'ps-4' : 'ps-2'}" data-path="${f.path}" onclick="loadSourceFile('${f.path.replace(/\\/g, '\\\\')}')"><i class="bi ${icon}"></i> ${f.name} <span class="float-end text-muted small">${formatSize(f.size)}</span></div>`;
+            });
+        }
+        html += '</div>';
+        tree.innerHTML = html;
+    }
+
+    function formatSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; }
+
+    function loadSourceFile(path) {
+        document.querySelectorAll('#sourceTree .list-group-item').forEach(el => el.classList.remove('active'));
+        const el = document.querySelector(`#sourceTree [data-path="${path}"]`);
+        if (el) el.classList.add('active');
+        document.getElementById('sourceHeader').textContent = path;
+        fetch(`/api/source/content?path=${encodeURIComponent(path)}`).then(r => r.json()).then(data => {
+            if (data.error) { document.getElementById('sourceEditor').innerHTML = `<div class="p-3 text-danger">${data.error}</div>`; return; }
+            const mode = path.endsWith('.py') ? 'python' : path.endsWith('.js') ? 'javascript' : path.endsWith('.json') ? 'application/json' : path.endsWith('.md') ? 'markdown' : path.endsWith('.css') ? 'css' : path.endsWith('.html') ? 'xml' : path.endsWith('.sh') || path.endsWith('.bat') ? 'shell' : 'text/plain';
+            if (state.editor) state.editor.toTextArea();
+            document.getElementById('sourceEditor').innerHTML = '<textarea id="codeArea"></textarea>';
+            state.editor = CodeMirror.fromTextArea(document.getElementById('codeArea'), { mode, theme: 'dracula', lineNumbers: true, readOnly: true, matchBrackets: true, foldGutter: true, gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'], indentUnit: 4, tabSize: 4 });
+            state.editor.setValue(data.content);
+        });
+    }
+
+    // ========== Init ==========
+    loadTestInfo();
+    loadSourceFiles();
+    </script>
+</body>
+</html>
